@@ -1,0 +1,80 @@
+.chat-bookmark-btn {
+  position: absolute;
+  top: 0;
+  right: -34px;
+  z-index: 2147483647;
+  border: 1px solid rgba(0,0,0,.18);
+  border-radius: 999px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 7px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.16);
+  pointer-events: auto;
+  opacity: .95;
+  min-width: 24px;
+  min-height: 24px;
+}
+.chat-bookmark-btn:hover { opacity: 1; transform: scale(1.04); }
+.chat-bookmark-btn.saved { color: #b7791f; }
+.chat-bookmark-target { outline: 2px solid #f6ad55; outline-offset: 4px; border-radius: 8px; }
+
+.chat-bookmark-host {
+  overflow: visible !important;
+}
+
+/* Keep the star near the actual message text/bubble instead of the far page edge. */
+.chat-bookmark-host > .chat-bookmark-btn {
+  top: 0;
+  right: -34px;
+}
+
+/* ── Claude-specific star button (isolated from ChatGPT styles) ──────────── */
+/* Turn wrappers: div.mb-1.mt-6.group (user) and div.group.relative.pb-3     */
+/* (assistant). Both need relative positioning and visible overflow.          */
+
+.chat-bookmark-claude-host {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+.chat-bookmark-btn-claude {
+  position: absolute !important;
+  top: 6px !important;
+  right: -40px !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  border: 1px solid rgba(0,0,0,.18) !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  color: #333 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  padding: 4px 7px !important;
+  box-shadow: 0 1px 5px rgba(0,0,0,.16) !important;
+  opacity: .95 !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+}
+.chat-bookmark-btn-claude:hover {
+  opacity: 1 !important;
+  transform: scale(1.04) !important;
+}
+.chat-bookmark-btn-claude.saved {
+  color: #b7791f !important;
+}
+
+
+.json-connect-chooser {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 6px;
+}
+.json-connect-chooser[hidden] {
+  display: none !important;
+}

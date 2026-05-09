@@ -1,0 +1,8 @@
+cat > .gitignore <<'EOF'
+.DS_Store
+__MACOSX/
+*.zip
+node_modules/
+dist/
+.env
+EOF

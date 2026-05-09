@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Chat Bookmarks</title>
+  <style>
+
+    :root {
+      color-scheme: light;
+      --bg: #f9fafb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --button-bg: #ffffff;
+      --button-hover: #f3f4f6;
+      --active: #111827;
+      --active-text: #ffffff;
+      --project-bg: #eef2ff;
+      --claude-project-bg: #fff7ed;
+      --bookmark-hover: #f9fafb;
+      --accent: #b7791f;
+      --accent-soft: #fef3c7;
+      --shadow: rgba(15, 23, 42, .08);
+    }
+    body.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #374151;
+      --button-bg: #1f2937;
+      --button-hover: #374151;
+      --active: #e5e7eb;
+      --active-text: #111827;
+      --project-bg: #1e1b4b;
+      --claude-project-bg: #431407;
+      --bookmark-hover: #182033;
+      --accent: #fbbf24;
+      --accent-soft: #78350f;
+      --shadow: rgba(0, 0, 0, .35);
+    }
+    .side-shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar { display: flex; align-items: center; gap: 8px; }
+    .app-title { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel-icon-btn { border: 1px solid var(--border); background: var(--button-bg); color: var(--text); border-radius: 10px; width: 34px; height: 30px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .panel-icon-btn:hover { background: var(--button-hover); }
+    .drawer-content { flex: 1; min-height: 0; overflow: auto; }
+    body { width: 100vw; min-width: 360px; max-width: none; height: 100vh; margin: 0; font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; color: var(--text); background: var(--bg); overflow: hidden; }
+    header { padding: 10px 12px 10px; font-weight: 700; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 12px var(--shadow); }
+    .tabs { display: flex; gap: 6px; margin-top: 9px; }
+    .provider-tab { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 4px 10px; cursor: pointer; font-size: 12px; color: #374151; }
+    .provider-tab.active { background: #111827; color: #fff; border-color: #111827; }
+    .controls { display: grid; grid-template-columns: 1fr 142px auto; gap: 6px; margin-top: 10px; align-items: center; }
+    #bookmarkSearch, #bookmarkSort { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; font: 12px system-ui, -apple-system, Segoe UI, sans-serif; padding: 6px 8px; }
+    #bookmarkSearch:focus, #bookmarkSort:focus { outline: 2px solid #bfdbfe; border-color: #93c5fd; }
+    #clearSearch, .backup-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 5px 8px; cursor: pointer; color: #374151; }
+    #clearSearch:hover, .backup-btn:hover { background: #f3f4f6; }
+    .backup-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .backup-status, .sync-status { color: #6b7280; font-size: 11px; flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .backup-note, .sync-note { color: #6b7280; font-size: 10px; line-height: 1.25; margin-top: 4px; }
+    .sync-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+    #importJsonFile { display: none; }
+    #list { padding: 10px; }
+    .empty { color: #6b7280; padding: 16px; text-align: center; }
+    .group { background: white; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+    .project-title, .chat-title { display: flex; align-items: center; gap: 8px; padding: 9px 10px; font-weight: 700; }
+    .project-title { background: #eef2ff; }
+    .provider-claude .project-title { background: #fff7ed; }
+    .chat-title { background: #f8fafc; border-top: 1px solid #e5e7eb; }
+    .normal .chat-title { border-top: 0; background: white; }
+    .title-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { font-size: 11px; color: #6b7280; font-weight: 500; }
+    .provider-pill { font-size: 10px; font-weight: 700; color: #4b5563; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 999px; padding: 1px 6px; margin-right: 3px; }
+    .rename, .toggle { border: 0; background: transparent; cursor: pointer; padding: 2px 4px; color: #374151; }
+    .rename { font-size: 14px; }
+    .toggle { width: 22px; font-size: 13px; text-align: center; }
+    .bookmark-row { display: flex; align-items: stretch; border-top: 1px solid #f3f4f6; background: white; }
+    .bookmark-row:hover { background: #f9fafb; }
+    .bookmark { flex: 1; min-width: 0; padding: 8px 8px; cursor: pointer; background: transparent; }
+    .bookmark-toggle { width: 32px; flex: 0 0 32px; align-self: stretch; border: 0; background: transparent; color: #b7791f; cursor: pointer; font-size: 15px; pointer-events: auto; position: relative; z-index: 10; }
+    .bookmark-toggle:hover { background: #fef3c7; }
+    .bookmark-rename { width: 30px; flex: 0 0 30px; align-self: stretch; opacity: .75; pointer-events: auto; position: relative; z-index: 10; cursor: pointer; }
+    .bookmark-rename:hover { opacity: 1; background: #f3f4f6; }
+    .snippet { color: #374151; }
+    .bookmark-time { color: #92400e; font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .url { color: #6b7280; font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .icon-btn { width: 34px; text-align: center; font-size: 15px; font-weight: 700; }
+    .dev-only { display: none !important; }
+    .dev-only.dev-visible { display: flex !important; }
+    .debug-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+    #syncDebugOutput { display: none; flex: 1 1 100%; box-sizing: border-box; max-height: 190px; overflow: auto; background: #111827; color: #d1d5db; border-radius: 8px; padding: 8px; font: 10px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
+    #syncDebugOutput.visible { display: block; }
+
+    body, input, select, button { color: var(--text); }
+    .provider-tab, #bookmarkSearch, #bookmarkSort, #clearSearch, .backup-btn { background: var(--button-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    .provider-tab.active { background: var(--active) !important; color: var(--active-text) !important; border-color: var(--active) !important; }
+    #list { padding: 10px; background: var(--bg); }
+    .group, .normal .chat-title, .bookmark-row { background: var(--panel) !important; border-color: var(--border) !important; }
+    .project-title { background: var(--project-bg) !important; }
+    .provider-claude .project-title { background: var(--claude-project-bg) !important; }
+    .chat-title { background: var(--panel-2) !important; border-color: var(--border) !important; }
+    .bookmark-row:hover { background: var(--bookmark-hover) !important; }
+    .snippet, .title-text, .rename, .toggle { color: var(--text) !important; }
+    .meta, .url, .empty, .backup-status, .sync-status, .backup-note, .sync-note { color: var(--muted) !important; }
+    .provider-pill { color: var(--muted) !important; background: var(--button-hover) !important; border-color: var(--border) !important; }
+    .bookmark-toggle, .bookmark-time { color: var(--accent) !important; }
+    .bookmark-toggle:hover { background: var(--accent-soft) !important; }
+    .backup-controls, .sync-controls, .debug-controls { border-color: var(--border) !important; }
+  </style>
+</head>
+<body class="dark-theme">
+  <div class="side-shell">
+  <header>
+    <div class="topbar">
+      <div class="app-title">Chat Bookmarks</div>
+      <button id="themeToggle" class="panel-icon-btn" type="button" title="Toggle dark/light theme">🌙</button>
+      <button id="closePanel" class="panel-icon-btn" type="button" title="Close panel">×</button>
+    </div>
+    <div id="providerTabs" class="tabs"></div>
+    <div class="controls" aria-label="Bookmark controls">
+      <input id="bookmarkSearch" type="search" placeholder="Search..." autocomplete="off" />
+      <select id="bookmarkSort" title="Sort bookmarks">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="title-az">Title A-Z</option>
+        <option value="title-za">Title Z-A</option>
+      </select>
+      <button id="clearSearch" type="button" title="Clear search">Clear</button>
+    </div>
+
+    <div class="sync-controls" aria-label="Chrome Sync controls">
+      <button id="toggleGoogleSync" class="backup-btn" type="button" title="Enable automatic Chrome sign-in sync">Enable Chrome Sync</button>
+      <button id="syncNow" class="backup-btn icon-btn" type="button" title="Refresh sync now">↻</button>
+      <div id="syncStatus" class="sync-status">Chrome Sync is off.</div>
+    </div>
+    <div class="debug-controls dev-only" aria-label="Sync diagnostics controls">
+      <button id="showSyncDiagnostics" class="backup-btn" type="button" title="Show extension ID, Chrome Sync metadata, counts, and recent sync logs">Sync diagnostics</button>
+      <button id="copySyncDiagnostics" class="backup-btn" type="button" title="Copy diagnostics to clipboard">Copy diagnostics</button>
+      <button id="clearSyncDiagnostics" class="backup-btn" type="button" title="Clear saved sync debug log">Clear logs</button>
+      <pre id="syncDebugOutput"></pre>
+    </div>
+    <div class="backup-controls" aria-label="JSON backup controls">
+      <button id="connectBackupFile" class="backup-btn" type="button" title="Choose or create a JSON backup file">Connect JSON file</button>
+      <div id="jsonConnectChooser" class="json-connect-chooser" hidden>
+        <button id="openExistingBackupFile" class="backup-btn" type="button" title="Choose an existing JSON file and load it">Open existing</button>
+        <button id="createNewBackupFile" class="backup-btn" type="button" title="Create a new JSON file and save current bookmarks">Create new</button>
+      </div>
+      <button id="saveBackupFile" class="backup-btn icon-btn" type="button" title="Save current bookmarks to the connected JSON file">💾</button>
+      <button id="loadBackupFile" class="backup-btn dev-only" type="button" title="Load bookmarks from the connected JSON file">Load JSON</button>
+      <button id="exportJson" class="backup-btn dev-only" type="button" title="Download a separate JSON copy manually">Export copy</button>
+      <button id="importJson" class="backup-btn dev-only" type="button" title="Import bookmarks from a JSON file">Import copy</button>
+      <input id="importJsonFile" type="file" accept="application/json,.json" />
+      <div id="backupStatus" class="backup-status">No backup JSON file connected.</div>
+    </div>
+  </header>
+  <div id="list" class="drawer-content"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

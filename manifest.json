@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "StarMarkAI Chat Bookmarks",
+  "version": "1.0.0",
+  "description": "Bookmark key AI chat moments, jump back instantly, and sync across Chrome with a sleek side panel.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "offscreen",
+    "bookmarks",
+    "alarms",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*"
+  ],
+  "action": {
+    "default_title": "Chat Bookmarks",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "short_name": "StarMarkAI"
+}
