@@ -435,14 +435,23 @@ function normalizeDeletedBookmarks(value) {
     if (!el.getAttribute(TARGET_ATTR)) {
       const provider = getProvider(location.href);
       const testid = el.getAttribute('data-testid') || '';
-      const base = el.getAttribute('data-message-id') || el.id || '';
+      const messageHost = el.closest && el.closest('[data-message-id]');
+      const turnHost = el.closest && el.closest('[data-turn-id]');
+      const base = (messageHost && messageHost.getAttribute('data-message-id')) ||
+        el.getAttribute('data-message-id') ||
+        (turnHost && turnHost.getAttribute('data-turn-id')) ||
+        el.getAttribute('data-turn-id') ||
+        el.id || '';
       const text = getCleanText(el).slice(0, 120);
       const index = getMessageCandidates().indexOf(el);
-      const role = provider === 'claude'
-        ? (testid.includes('human') || testid.includes('user') ? 'user'
+      const role = provider === 'chatgpt'
+        ? ((messageHost && messageHost.getAttribute('data-message-author-role')) ||
+          el.getAttribute('data-message-author-role') ||
+          (turnHost && turnHost.getAttribute('data-turn')) ||
+          'unknown')
+        : (testid.includes('human') || testid.includes('user') ? 'user'
           : testid.includes('assistant') || testid.includes('bot') ? 'assistant'
-          : 'unknown')
-        : 'unknown';
+          : 'unknown');
       const key = base ? `${provider}-msg-${base}` : `${provider}-idx-${index}-${role}-${hash(text)}`;
       el.setAttribute(TARGET_ATTR, key);
     }
@@ -626,11 +635,26 @@ function normalizeDeletedBookmarks(value) {
       const snippet = limitBookmarkText(getCleanText(el), BOOKMARK_TEXT_MAX) || 'Bookmarked section';
       const messages = getMessageCandidates();
       const index = messages.indexOf(el);
+      const messageHost = el.closest && el.closest('[data-message-id]');
+      const turnHost = el.closest && el.closest('[data-turn-id]');
+      const targetMeta = {
+        index,
+        snippet: limitBookmarkText(snippet, 100),
+        textHash: hash(getCleanText(el).slice(0, 500)),
+        role: meta.provider === 'chatgpt'
+          ? ((messageHost && messageHost.getAttribute('data-message-author-role')) ||
+            el.getAttribute('data-message-author-role') ||
+            (turnHost && turnHost.getAttribute('data-turn')) ||
+            'unknown')
+          : undefined,
+        messageId: messageHost ? messageHost.getAttribute('data-message-id') : (el.getAttribute('data-message-id') || null),
+        turnId: turnHost ? turnHost.getAttribute('data-turn-id') : (el.getAttribute('data-turn-id') || null)
+      };
       const bookmark = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         provider: meta.provider,
         targetKey,
-        target: { index, snippet: limitBookmarkText(snippet, 100) },
+        target: targetMeta,
         snippet,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -668,32 +692,255 @@ function normalizeDeletedBookmarks(value) {
 
   // ── Jump to bookmark ───────────────────────────────────────────────────────
 
-  function jumpTo(targetKey, target) {
-    const tryByKey = () => targetKey
-      ? document.querySelector(`[${TARGET_ATTR}="${CSS.escape(targetKey)}"]`)
-      : null;
-    const tryByTarget = () => {
-      if (!target) return null;
+  function parseMessageIdFromTargetKey(targetKey) {
+    const raw = String(targetKey || '');
+    const m = raw.match(/^(chatgpt|claude)-msg-(.+)$/);
+    return m ? m[2] : null;
+  }
+
+  function cssEscapeValue(value) {
+    return CSS && typeof CSS.escape === 'function' ? CSS.escape(String(value || '')) : String(value || '').replace(/"/g, '\"');
+  }
+
+  function getStableChatGptElement(targetKey, target) {
+    if (getProvider(location.href) !== 'chatgpt') return null;
+    const messageId = (target && target.messageId) || parseMessageIdFromTargetKey(targetKey);
+    if (messageId) {
+      const escaped = cssEscapeValue(messageId);
+      const byMessage = document.querySelector(`[data-message-id="${escaped}"]`);
+      if (byMessage) return byMessage;
+      const byTurn = document.querySelector(`[data-turn-id="${escaped}"]`);
+      if (byTurn) return byTurn;
+      const byContainer = document.querySelector(`[data-turn-id-container="${escaped}"]`);
+      if (byContainer) return byContainer;
+    }
+    if (target && target.turnId) {
+      const escapedTurn = cssEscapeValue(target.turnId);
+      return document.querySelector(`[data-turn-id="${escapedTurn}"], [data-turn-id-container="${escapedTurn}"]`);
+    }
+    return null;
+  }
+
+  function scoreMessageCandidate(el, target) {
+    if (!el || !target) return -1;
+    let score = 0;
+    const text = getCleanText(el).toLowerCase();
+    const snippet = String(target.snippet || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const role = String(target.role || '').toLowerCase();
+    const elRole = String(el.getAttribute('data-message-author-role') || el.getAttribute('data-turn') || '').toLowerCase();
+    if (role && elRole && role === elRole) score += 20;
+    if (target.textHash && hash(getCleanText(el).slice(0, 500)) === target.textHash) score += 80;
+    if (snippet) {
+      const shortNeedle = snippet.slice(0, 80);
+      const shorterNeedle = snippet.slice(0, 40);
+      if (text.startsWith(shortNeedle)) score += 70;
+      else if (text.includes(shortNeedle)) score += 55;
+      else if (text.startsWith(shorterNeedle)) score += 45;
+      else if (text.includes(shorterNeedle)) score += 30;
+    }
+    if (Number.isInteger(target.index)) {
       const messages = getMessageCandidates();
-      if (Number.isInteger(target.index) && messages[target.index]) return messages[target.index];
-      if (target.snippet) {
-        const needle = String(target.snippet).slice(0, 60).toLowerCase();
-        return messages.find(el =>
-          getCleanText(el).toLowerCase().startsWith(needle.slice(0, 40))
-        ) || null;
+      const idx = messages.indexOf(el);
+      if (idx === target.index) score += 10;
+      else if (Math.abs(idx - target.index) <= 2) score += 4;
+    }
+    return score;
+  }
+
+  function findBestTargetByContent(target) {
+    if (!target) return null;
+    const messages = getMessageCandidates();
+    let best = null;
+    let bestScore = -1;
+    messages.forEach(el => {
+      const score = scoreMessageCandidate(el, target);
+      if (score > bestScore) {
+        best = el;
+        bestScore = score;
       }
-      return null;
-    };
+    });
+    if (best && bestScore >= 30) return best;
+    if (Number.isInteger(target.index) && messages[target.index]) return messages[target.index];
+    return null;
+  }
+
+  function getScrollTargetElement(el) {
+    if (!(el instanceof HTMLElement)) return el;
+    if (getProvider(location.href) === 'chatgpt') {
+      // Do NOT always promote to the full conversation turn. Current ChatGPT
+      // assistant turns can contain multiple message blocks inside one
+      // data-testid="conversation-turn-*" wrapper, for example tool/status
+      // text followed by the final answer. Scrolling the wrapper makes several
+      // bookmarks in the same answer land on the first block. Prefer the exact
+      // message block that owns data-message-id, then the passed element.
+      return el.closest('[data-message-id]') ||
+        (el.matches && el.matches('[data-turn-id]') ? el : null) ||
+        el.closest('[data-turn-id]') ||
+        el;
+    }
+    return el;
+  }
+
+  function getHeaderOffsetPx() {
+    const header = document.querySelector('header') || document.querySelector('[data-testid="mobile-header"]');
+    const headerHeight = header ? Math.min(180, Math.max(56, header.getBoundingClientRect().height)) : 76;
+    // Leave breathing room above the bookmarked message so it is not hidden
+    // under ChatGPT's sticky header and is not jammed against the viewport edge.
+    return headerHeight + 56;
+  }
+
+  function getPageScrollContainer(el) {
+    // ChatGPT and Claude sometimes scroll inside a nested thread container rather
+    // than the window. If we only call window.scrollTo, the target can highlight
+    // correctly but stay off-screen. Walk upward and pick the first element that
+    // actually scrolls; fall back to the document scroller.
+    let node = el && el.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      const style = window.getComputedStyle(node);
+      const canScrollY = /(auto|scroll|overlay)/.test(style.overflowY || style.overflow || '');
+      if (canScrollY && node.scrollHeight > node.clientHeight + 24) return node;
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function getScrollTop(container) {
+    if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+      return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    }
+    return container.scrollTop || 0;
+  }
+
+  function setScrollTop(container, top) {
+    const value = Math.max(0, top);
+    if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+      window.scrollTo(0, value);
+      return;
+    }
+    container.scrollTop = value;
+  }
+
+  function maxScrollTop(container) {
+    if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+      const doc = document.documentElement;
+      return Math.max(0, doc.scrollHeight - window.innerHeight);
+    }
+    return Math.max(0, container.scrollHeight - container.clientHeight);
+  }
+
+  function animateScrollTop(container, targetTop, duration) {
+    const startTop = getScrollTop(container);
+    const endTop = Math.max(0, Math.min(maxScrollTop(container), targetTop));
+    const distance = endTop - startTop;
+    if (Math.abs(distance) < 2) {
+      setScrollTop(container, endTop);
+      return Promise.resolve();
+    }
+
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+      setScrollTop(container, endTop);
+      return Promise.resolve();
+    }
+
+    const ms = Math.max(320, Math.min(1200, duration || 760));
+    const start = performance.now();
+    return new Promise(resolve => {
+      const step = now => {
+        const progress = Math.min(1, (now - start) / ms);
+        setScrollTop(container, startTop + distance * easeInOutCubic(progress));
+        if (progress < 1) requestAnimationFrame(step);
+        else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  function getTargetScrollTop(container, targetEl) {
+    const offset = getHeaderOffsetPx();
+    const targetRect = targetEl.getBoundingClientRect();
+
+    if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+      return targetRect.top + window.scrollY - offset;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    return container.scrollTop + (targetRect.top - containerRect.top) - offset;
+  }
+
+  function scrollContainerToElement(container, targetEl, behavior, duration) {
+    const top = getTargetScrollTop(container, targetEl);
+    if (behavior === 'auto') {
+      setScrollTop(container, top);
+      return Promise.resolve();
+    }
+    return animateScrollTop(container, top, duration || 780);
+  }
+
+  function scrollToBookmarkElement(el) {
+    const targetEl = getScrollTargetElement(el);
+    if (!(targetEl instanceof HTMLElement)) return;
+    const container = getPageScrollContainer(targetEl);
+
+    targetEl.classList.add('chat-bookmark-target');
+
+    // Use our own easing animation instead of native scrollIntoView. Native
+    // scrolling can snap very quickly in ChatGPT/Claude nested scroll roots.
+    scrollContainerToElement(container, targetEl, 'smooth', 850);
+
+    // ChatGPT often lays out code blocks, file tiles, and generated widgets after
+    // the first scroll. Re-apply the offset smoothly after layout settles.
+    setTimeout(() => scrollContainerToElement(getPageScrollContainer(targetEl), targetEl, 'smooth', 420), 650);
+    setTimeout(() => {
+      const desired = getHeaderOffsetPx();
+      const currentTop = targetEl.getBoundingClientRect().top;
+      if (currentTop < desired - 28 || currentTop > window.innerHeight - 140) {
+        scrollContainerToElement(getPageScrollContainer(targetEl), targetEl, 'smooth', 500);
+      }
+    }, 1300);
+    setTimeout(() => targetEl.classList.remove('chat-bookmark-target'), 3200);
+  }
+
+  function findJumpElement(targetKey, target) {
+    const byStableId = getStableChatGptElement(targetKey, target);
+    if (byStableId) return byStableId;
+    if (targetKey) {
+      const byAttr = document.querySelector(`[${TARGET_ATTR}="${CSS.escape(targetKey)}"]`);
+      if (byAttr) return byAttr;
+    }
+    return findBestTargetByContent(target);
+  }
+
+  function jumpTo(targetKey, target) {
+    const provider = getProvider(location.href);
+    let scanDirection = -1;
     const attempt = (n) => {
       addBookmarkButtons();
-      const el = tryByKey() || tryByTarget();
+      const el = findJumpElement(targetKey, target);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('chat-bookmark-target');
-        setTimeout(() => el.classList.remove('chat-bookmark-target'), 2500);
+        scrollToBookmarkElement(el);
         return;
       }
-      if (n < 30) setTimeout(() => attempt(n + 1), 300);
+
+      // If ChatGPT/Claude has not rendered the target yet, gently scan the
+      // conversation. This helps when a chat opens near the bottom and older
+      // messages are lazily rendered. We avoid this for the first few attempts
+      // so newly opened pages can hydrate normally.
+      if (n >= 4 && n < 34) {
+        const step = Math.max(520, Math.floor(window.innerHeight * 0.72));
+        if (provider === 'chatgpt' || provider === 'claude') {
+          const atTop = window.scrollY <= 4;
+          const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8;
+          if (atTop) scanDirection = 1;
+          if (atBottom) scanDirection = -1;
+          window.scrollBy({ top: step * scanDirection, behavior: 'auto' });
+        }
+      }
+      if (n < 55) setTimeout(() => attempt(n + 1), 260);
     };
     attempt(0);
   }

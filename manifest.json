@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StarMarkAI Chat Bookmarks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Bookmark key AI chat moments, jump back instantly, and sync across Chrome with a sleek side panel.",
   "permissions": [
     "storage",
@@ -33,8 +33,12 @@
         "https://chat.openai.com/*",
         "https://claude.ai/*"
       ],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],
